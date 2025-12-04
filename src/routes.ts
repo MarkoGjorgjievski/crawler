@@ -1,104 +1,206 @@
-import { createPlaywrightRouter } from 'crawlee';
+import { createPlaywrightRouter, Dataset } from 'crawlee';
 
 export const router = createPlaywrightRouter();
 
+// Define types for API responses
+interface PricelistItem {
+    Title: string;
+    RegularPrice: number;
+    CategoryName: string;
+    AvailableWebshop: boolean;
+    DiscountPrice: number;
+    DiscountPercent: number;
+    PromotionName: string | null;
+    From: string | null;
+    To: string | null;
+    DiscountPriceType: string;
+    AvailableInShops: boolean;
+    OnlinePrice: number;
+    ShowOnlinePrice: boolean;
+}
 
+interface PricelistResponse {
+    Data: {
+        Config: {
+            TotalItems: number;
+            ItemsPerPage: number;
+            MaxSize: number;
+        };
+        Items: PricelistItem[];
+    };
+}
 
-router.addDefaultHandler(async ({ page, log, crawler, request }) => {
-    log.setLevel(log.LEVELS.DEBUG);
-    log.debug(`Default handler: ${request.url}`);
-    
-    // Get all level 1 category items (parent li elements)
-    const categoryItems = await page.$$('li[id="webshop_root"] ul.lvl1 > li');
-    log.debug(`Found ${categoryItems.length} categories`);
-    
-    for (let i = 0; i < categoryItems.length; i++) {
-        // Re-select elements to avoid stale references
-        const categories = await page.$$('li[id="webshop_root"] ul.lvl1 > li');
-        const categoryItem = categories[i];
-        
-        // Get the category name before clicking
-        const categoryName = await categoryItem.$eval('a', el => el.textContent?.trim() || 'Unknown');
-        log.debug(`Processing category ${i + 1}/${categoryItems.length}: ${categoryName}`);
-        
-        // Click the category link to open submenu
-        await categoryItem.$eval('a', el => el.click());
-        
-        // Wait a bit for the submenu to open and for 'li.open' class to be added
-        await page.waitForTimeout(300);
-        
-        // Now collect subcategories from the opened menu
-        const subcategories = await page.$$eval(
-            'li.open div.menu-holder > ul.lvl2 > li > a',
-            (links) => links.map((link)=> ({
-                url: (link as HTMLAnchorElement).href, 
-                text: (link as HTMLElement).textContent?.trim() || '',
-            }))
-        );
-        
-        log.debug(`Found ${subcategories.length} subcategories in ${categoryName}`);
-        
-        // Add each subcategory to the queue with metadata
-        for (const sub of subcategories) {
-            await crawler.addRequests([{
-                url: sub.url,
-                label: 'CATEGORY',
-                userData: {
-                    category: categoryName,
-                    subcategory: sub.text,
+interface ProductDetail {
+    Title: string;
+    Url: string;
+    Link: string;
+    ShortDescription: string;
+    Barcode: string;
+    ModelNumber: string;
+    CodeNumber: string;
+    ImagePath: string;
+    Image: string;
+    Manufacturer: string;
+    CategoryId: string;
+    RegularPrice: number;
+    DiscountPrice: number;
+    HasDiscount: boolean;
+    AvailableWebshop: boolean;
+}
+
+// Handler for fetching pricelist (paginated)
+router.addHandler('PRICELIST', async ({ request, page, crawler, log }) => {
+    const { currentPage, itemsPerPage, maxPages } = request.userData;
+
+    log.info(`========== STARTING PRICELIST HANDLER ==========`);
+    log.info(`Fetching pricelist page ${currentPage}/${maxPages}`);
+
+    try {
+        // Make API request to get pricelist
+        const response = await page.evaluate(async ({ page, perPage }) => {
+            const res = await fetch('https://www.neptun.mk/Product/GetPricelist', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
                 },
-            }]);
+                body: JSON.stringify({
+                    CurrentPage: page,
+                    ItemsPerPage: perPage,
+                    ShopId: null,
+                }),
+            });
+            return res.json();
+        }, { page: currentPage, perPage: itemsPerPage });
+
+        const data = response as PricelistResponse;
+
+        if (!data.Data || !data.Data.Items || data.Data.Items.length === 0) {
+            log.warning(`No items found on page ${currentPage}`);
+            return;
         }
-        
-        log.debug(`Enqueued ${subcategories.length} subcategories from ${categoryName}`);
+
+        log.info(`Found ${data.Data.Items.length} products on page ${currentPage}`);
+
+        // First, queue all product detail requests with UNIQUE URLs
+        for (let i = 0; i < data.Data.Items.length; i++) {
+            const item = data.Data.Items[i];
+            const uniqueUrl = `https://www.neptun.mk/Product/SearchProductsAutocomplete#p${currentPage}i${i}`;
+            log.info(`Queuing product ${i + 1}/${data.Data.Items.length}: ${item.Title} (${uniqueUrl})`);
+            await crawler.addRequests([
+                {
+                    // CRITICAL: Each URL must be unique to avoid deduplication
+                    // Using hash with page and index makes each request unique
+                    url: uniqueUrl,
+                    label: 'PRODUCT_DETAIL',
+                    uniqueKey: `product-${currentPage}-${i}-${item.Title}`, // Explicit unique key
+                    userData: {
+                        productTitle: item.Title,
+                        pricelistData: item,
+                    },
+                },
+            ], { forefront: false }); // Add to back of queue
+        }
+        log.info(`Queued ${data.Data.Items.length} product detail requests`);
+
+        // THEN queue next page if within limit (at the end, after all products)
+        if (currentPage < maxPages) {
+            log.info(`Preparing to queue page ${currentPage + 1}`);
+            await crawler.addRequests([
+                {
+                    // Use unique URL with hash fragment for each page
+                    url: `https://www.neptun.mk/Product/GetPricelist#page${currentPage + 1}`,
+                    label: 'PRICELIST',
+                    uniqueKey: `pricelist-page-${currentPage + 1}`, // Explicit unique key for pagination
+                    userData: {
+                        currentPage: currentPage + 1,
+                        itemsPerPage,
+                        maxPages,
+                    },
+                },
+            ], { forefront: false }); // Add to back of queue, not front
+            log.info(`Successfully queued page ${currentPage + 1}`);
+        } else {
+            log.info('Reached max pages limit');
+        }
+    } catch (error) {
+        log.error(`Error fetching pricelist page ${currentPage}:`, error!);
+        throw error;
     }
-    
-    log.debug('All categories and subcategories processed');
 });
 
-router.addHandler('CATEGORY', async ({ request, page, enqueueLinks, log }) => {
-    log.setLevel(log.LEVELS.DEBUG)
-    log.debug(`Category handler: ${request.url}`);
-    // these are all the products within the category
-    await page.waitForSelector('.theProduct > a');
-    log.debug('selector found for products');
-    await enqueueLinks({
-        selector: '.theProduct > a',
-        label: 'DETAIL',
-    });
+// Handler for fetching product details
+router.addHandler('PRODUCT_DETAIL', async ({ request, page, log }) => {
+    const { productTitle, pricelistData } = request.userData;
 
-    // this is the pagination which leads to the next page, same category
-    // first two buttons are disabled, skip them 
-    // error is thrown if I try to click them
-    const nextButton = await page.$('li[role="menuitem"] > a');
-    log.debug('next button found');
-    if (nextButton) {
-        await enqueueLinks({
-            selector: 'li[role="menuitem"] > a',
-            label: 'CATEGORY',
-        });
+    log.info(`Fetching details for: ${productTitle}`);
+
+    try {
+        // Make API request to get product details
+        const response = await page.evaluate(async (title) => {
+            const res = await fetch('https://www.neptun.mk/Product/SearchProductsAutocomplete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    itemsPerPage: 1,
+                    page: 1,
+                    term: title,
+                }),
+            });
+            return res.json();
+        }, productTitle);
+
+        // Extract product details from response
+        if (response.ProductsResult?.results?.[0]) {
+            const detail = response.ProductsResult.results[0] as ProductDetail;
+
+            // Combine pricelist data with detailed data
+            const product = {
+                // Basic info
+                title: detail.Title,
+                manufacturer: detail.Manufacturer,
+                category: pricelistData.CategoryName,
+                
+                // URLs and images
+                url: `https://www.neptun.mk${detail.Url}`,
+                imageUrl: detail.ImagePath ? `https://www.neptun.mk/Content/Images/Proizvodi/${detail.ImagePath}` : null,
+                
+                // Identifiers
+                barcode: detail.Barcode,
+                modelNumber: detail.ModelNumber,
+                codeNumber: detail.CodeNumber,
+                
+                // Pricing
+                regularPrice: pricelistData.RegularPrice,
+                discountPrice: pricelistData.DiscountPrice,
+                discountPercent: pricelistData.DiscountPercent,
+                hasDiscount: detail.HasDiscount,
+                
+                // Availability
+                availableWebshop: pricelistData.AvailableWebshop,
+                availableInShops: pricelistData.AvailableInShops,
+                
+                // Promotion
+                promotionName: pricelistData.PromotionName,
+                promotionFrom: pricelistData.From,
+                promotionTo: pricelistData.To,
+                
+                // Description
+                shortDescription: detail.ShortDescription,
+                
+                // Metadata
+                scrapedAt: new Date().toISOString(),
+            };
+
+            // Save to dataset
+            await Dataset.pushData(product);
+            log.info(`Saved product: ${product.title}`);
+        } else {
+            log.warning(`No details found for: ${productTitle}`);
+        }
+    } catch (error) {
+        log.error(`Error fetching details for ${productTitle}:`, error!);
+        // Don't throw - continue with other products
     }
-    log.debug(`Enqueueing pagination for: ${request.url}`);
-})
-
-router.addHandler('DETAIL', async ({ request, page, log, pushData }) => {
-    log.setLevel(log.LEVELS.DEBUG)
-    log.debug(`Extracting data: ${request.url}`);
-
-    const title = await page.locator('product-details-second-col__title').textContent();
-    const manufacturer = title?.split(' ')[0] ?? 'Unknown';
-
-    const price = await page
-        .locator('span.productRegularPrice')
-        .textContent();
-
-    const results = {
-        url: request.url,
-        manufacturer,
-        title,
-        currentPrice: price,
-    };
-
-    log.debug(`Saving data: ${request.url}`);
-    await pushData(results);
 });

@@ -9,9 +9,10 @@
     },
     "devDependencies": {
         "@apify/tsconfig": "^0.1.0",
+        "@types/node": "^24.0.0",
+        "commander": "^14.0.2",
         "tsx": "^4.4.0",
-        "typescript": "~5.9.0",
-        "@types/node": "^24.0.0"
+        "typescript": "~5.9.0"
     },
     "scripts": {
         "start": "npm run start:dev",
@@ -19,7 +20,11 @@
         "start:dev": "tsx src/main.ts",
         "build": "tsc",
         "test": "echo \"Error: oops, the actor has no tests yet, sad!\" && exit 1",
-        "postinstall": "npx crawlee install-playwright-browsers"
+        "postinstall": "npx crawlee install-playwright-browsers",
+        "scrape:neptun": "tsx src/main.ts --store neptun",
+        "scrape:store2": "tsx src/main.ts --store store2",
+        "scrape:all": "tsx src/main.ts --all",
+        "dev": "tsx watch src/main.ts"
     },
     "author": "It's not you it's me",
     "license": "ISC"

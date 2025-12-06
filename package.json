@@ -25,6 +25,7 @@
 		"scrape:neptun": "tsx src/main.ts --store neptun",
 		"scrape:setec": "tsx src/main.ts --store setec",
 		"scrape:tehnomarket": "tsx src/main.ts --store tehnomarket",
+		"scrape:anhoch": "tsx src/main.ts --store anhoch",
 		"scrape:all": "tsx src/main.ts --all",
 		"dev": "tsx watch src/main.ts",
 		"check": "biome check",

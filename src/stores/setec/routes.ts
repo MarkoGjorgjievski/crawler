@@ -9,7 +9,7 @@ export const router = createPlaywrightRouter();
 router.addHandler(
 	'EXTRACT_CATEGORIES',
 	async ({ request, page, crawler, log }) => {
-		const { currentPage, itemsPerPage, maxPages } = request.userData;
+		const { itemsPerPage, maxPages } = request.userData;
 
 		log.info('========== Extracting categories from JavaScript ==========');
 

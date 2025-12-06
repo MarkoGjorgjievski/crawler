@@ -79,7 +79,7 @@ router.addHandler('PRICELIST', async ({ request, page, crawler, log }) => {
             log.info('Reached max pages limit');
         }
     } catch (error) {
-        log.error(`Error fetching pricelist page ${currentPage}:`, error!);
+        error && log.error(`Error fetching pricelist page ${currentPage}:`, error);
         throw error;
     }
 });
@@ -156,7 +156,7 @@ router.addHandler('PRODUCT_DETAIL', async ({ request, page, log }) => {
             log.warning(`No details found for: ${productTitle}`);
         }
     } catch (error) {
-        log.error(`Error fetching details for ${productTitle}:`, error!);
+        error && log.error(`Error fetching details for ${productTitle}:`, error);
         // Don't throw - continue with other products
     }
 });

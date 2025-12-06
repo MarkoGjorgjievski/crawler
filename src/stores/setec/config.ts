@@ -1,21 +1,20 @@
 import { createPlaywrightRouter, PlaywrightCrawlerOptions, Request } from 'crawlee';
-import { Store } from '../../types.js';
 
 const router = createPlaywrightRouter();
-export const config: Store['config'] = {
+export const config: PlaywrightCrawlerOptions & { initialRequest: Partial<Request>} = {
     requestHandler: router,
-    maxRequestsPerCrawl: 200,
+    maxRequestsPerCrawl: 1000,
     maxConcurrency: 5,
     autoscaledPoolOptions: {
         desiredConcurrency: 5,
     },
     initialRequest: {
-        url: 'https://www.neptun.mk/Product/GetPricelist',
-        label: 'PRICELIST',
+        url: 'https://www.setec.mk',
+        label: 'EXTRACT_CATEGORIES',
         userData: {
             currentPage: 1,
-            itemsPerPage: 5,
-            maxPages: 2,
-        }
-    }
-}
+            itemsPerPage: 3,
+            maxPages: 2, // Stop after this many pages per category
+        },
+    },
+};

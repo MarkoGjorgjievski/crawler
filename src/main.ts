@@ -1,35 +1,7 @@
-import { PlaywrightCrawler, Dataset, Request, RouterHandler, PlaywrightCrawlingContext, PlaywrightCrawlerOptions } from 'crawlee';
+import { PlaywrightCrawler, Dataset } from 'crawlee';
 import { Command } from 'commander';
-import { router as neptunRouter, config as neptunConfig } from './stores/neptun/index.js';
+import { stores } from './stores/index.js';
 
-// Define store config type
-interface StoreConfig {
-    name: string;
-    baseUrl: string;
-    maxRequests: number;
-    concurrency: number;
-    initialRequest: {
-        url: string;
-        label: string;
-        userData: Record<string, any>;
-    };
-}
-
-interface Store {
-    name: string;
-    router: RouterHandler<PlaywrightCrawlingContext>;
-    config: PlaywrightCrawlerOptions & { initialRequest: Partial<Request>};
-}
-
-// Store registry
-const stores: Record<string, Store> = {
-    neptun: {
-        name: 'Neptun.mk',
-        router: neptunRouter,
-        config: neptunConfig,
-    }
-    // Add more stores here
-};
 
 async function scrapeStore(storeName: string) {
     const store = stores[storeName];

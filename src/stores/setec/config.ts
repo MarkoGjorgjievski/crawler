@@ -1,13 +1,8 @@
-import {
-	createPlaywrightRouter,
-	PlaywrightCrawlerOptions,
-	Request,
-} from 'crawlee';
+import { createPlaywrightRouter } from 'crawlee';
+import { Store } from '../../types.js';
 
 const router = createPlaywrightRouter();
-export const config: PlaywrightCrawlerOptions & {
-	initialRequest: Partial<Request>;
-} = {
+export const config: Store['config'] = {
 	requestHandler: router,
 	maxRequestsPerCrawl: 1000,
 	maxConcurrency: 5,

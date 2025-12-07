@@ -1,8 +1,4 @@
-import {
-	createPlaywrightRouter,
-	PlaywrightCrawlerOptions,
-	Request,
-} from 'crawlee';
+import { createPlaywrightRouter } from 'crawlee';
 import { Store } from '../../types.js';
 
 const router = createPlaywrightRouter();
